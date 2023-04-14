@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 contract FugaController{
     event ServerMessage(string field);
+<<<<<<< HEAD
     function MessageTest(string memory _field) external {
         emit ServerMessage(_field);
     }
@@ -24,4 +25,9 @@ contract FugaController{
             uint local_epochs = 1;
             return (model_hashes, num_samples, scores, batch_size, local_epochs);
         }
+=======
+    function test() external {
+        emit ServerMessage("test");
+    }
+>>>>>>> 4cac3814c8b161fd71cbbc3ada1166eacf2ffba8
 }

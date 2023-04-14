@@ -1,3 +1,8 @@
+"""
+Example code from flower library
+https://github.com/adap/flower
+"""
+
 from collections import OrderedDict
 import warnings
 

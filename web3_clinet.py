@@ -40,7 +40,6 @@ def listen_for_event(contract, event_name):
         # wait for new events
         time.sleep(60)
 
-
 def web3_connection(contract) -> Tuple[Callable[[], Dict]]:
     web3_message_iterator = listen_for_event(contract, "ServerMessage")
 

@@ -16,12 +16,12 @@ class GPTClient:
         Returns:
             None
         """
-        self.model = GPTJForCausalLM.from_pretrained("hivemind/gpt-j-6B-8bit", low_cpu_mem_usage=True)
-        self.tokenizer = GPT2Tokenizer.from_pretrained("hivemind/gpt-j-6B-8bit")
-        self.config = config
-        self.trainset = None
-        self.valset = None
-        self.testset = None
+        self.model: GPTJForCausalLM = GPTJForCausalLM.from_pretrained("hivemind/gpt-j-6B-8bit", low_cpu_mem_usage=True)
+        self.tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained("hivemind/gpt-j-6B-8bit")
+        self.config: dict = config
+        self.trainset: Dataset = None
+        self.valset: Dataset = None
+        self.testset: Dataset = None
     
     def load_dataset(self, trainset: Dataset, valset: Dataset, testset: Dataset) -> None:
         """

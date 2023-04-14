@@ -32,14 +32,5 @@ class GPTClient():
         answer = self.model.generate(data)
         return answer
     
-    def get_weights(self, parameters, config):
-        self.set_parameters(parameters)
-        # do some prediction
-        return 
-    
-    def set_weights(self, parameters, config):
-        self.set_parameters(parameters)
-        # do some prediction
-        return 
     
     

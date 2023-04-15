@@ -70,9 +70,9 @@ def load_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1
     # Create the datasets
     tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-j-6B")
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    trainset = QADataset(train_df[['Content', 'Content']].values.tolist(), tokenizer)
-    valset = QADataset(val_df[['Content', 'Content']].values.tolist(), tokenizer)
-    testset = QADataset(test_df[['Content', 'Content']].values.tolist(), tokenizer)
+    trainset = QADataset(question_answer(train_df), tokenizer)
+    valset = QADataset(question_answer(val_df) ,tokenizer)
+    testset = QADataset(question_answer(test_df), tokenizer)
 
     return trainset, valset, testset
 
@@ -106,7 +106,7 @@ def add_prefix_special_username(df: pd.DataFrame, special_username_dict: Dict[st
         pd.DataFrame: The modified DataFrame.
     """
     for username in special_username_dict:
-        df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + ': ' + df['Content'].astype(str)
+        df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + df['Content'].astype(str)
     return df
 
 
@@ -145,6 +145,14 @@ def remove_links_and_emails(df: pd.DataFrame) -> pd.DataFrame:
     df['Content'] = df['Content'].apply(clean_links_and_emails)
     
     return df
+
+
+def question_answer(df: pd.DataFrame) -> List[Tuple[str, str]]:
+        qa = []
+        for i in range(len(df['Content'])):
+            qa.append(df['Content'][i], df['Content'][i+1])
+        return qa
+    
 
 def split_dataframe(df: pd.DataFrame, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame):
     assert train_ratio + val_ratio + test_ratio == 1, "The sum of ratios must equal 1."

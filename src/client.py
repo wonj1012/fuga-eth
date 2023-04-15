@@ -5,7 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from src.dataprocessing import *
 
-from gpt_model import train_gpt
+from src.gpt_model import train_gpt
 
 class GPTClient:
     def __init__(self, config: Dict[str, Any]) -> None:
@@ -22,9 +22,13 @@ class GPTClient:
             None
         """
         self.model: GPTJForCausalLM = GPTJForCausalLM.from_pretrained("hivemind/gpt-j-6B-8bit", low_cpu_mem_usage=True)
-        self.tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained("hivemind/gpt-j-6B-8bit")
+        self.tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-j-6B")
         self.config: Dict[str, Any] = config
-        self.trainset, self.valset, self.testset: Dataset = None, None, None
+        self.trainset: Dataset = None
+        self.valset: Dataset = None
+        self.testset: Dataset = None
+        # self.device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("mps")
     
     def set_config(self, config: Dict[str, Any]) -> None:
         """
@@ -73,7 +77,7 @@ class GPTClient:
         """
         self.model.load_state_dict(parameters)
     
-    def fit(self, parameters: dict) -> Tuple[dict, int]:
+    def fit(self, parameters: dict) -> Tuple[dict, int, Dict[str, Any]]:
         """
         Train the model and return the trained parameters and number of batches.
 
@@ -87,9 +91,25 @@ class GPTClient:
         self.set_parameters(parameters)
         trainloader = DataLoader(self.trainset, batch_size=self.config["batch_size"], shuffle=True)
         valloader = DataLoader(self.valset, batch_size=self.config["batch_size"], shuffle=True)
-        result = train_gpt(self.model, self.tokenizer, trainloader, valloader, self.config["learning_rate"], self.config["local_epochs"], self.config["val_steps"])
+        result = train_gpt(self.model, trainloader, valloader, epochs=self.config["local_epochs"], lr=self.config["learning_rate"], tokenizer=self.tokenizer, device=self.device)
         return self.get_parameters(), len(trainloader), result
     
+    
+    def evaluate(self, parameters: dict) -> Tuple[float, float]:
+        """
+        Evaluate the model using the given parameters and return the loss and accuracy.
+
+        Args:
+            parameters (dict): The dictionary containing model parameters to use for evaluation.
+            config (dict): The dictionary containing configuration parameters for evaluation.
+
+        Returns:
+            Tuple[float, float]: A tuple containing the loss and accuracy.
+        """
+        self.set_parameters(parameters)
+        testloader = DataLoader(self.testset, batch_size=self.config["batch_size"], shuffle=True)
+        loss, accuracy = evaluate_gpt(self.model, self.tokenizer, testloader)
+        return loss, accuracy
     
     def generate_answer(self, data: str, config: dict) -> str:
         """

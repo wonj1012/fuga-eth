@@ -21,6 +21,7 @@ class QADataset(Dataset):
         self.data = data
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
     def __len__(self):
         """
@@ -44,6 +45,7 @@ class QADataset(Dataset):
         )
 
         return input_ids
+
 
 def get_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1) -> Tuple[Dataset, Dataset, Dataset]:
     """
@@ -71,7 +73,7 @@ def get_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1)
     
     # Create the datasets
     tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-j-6B")
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    # tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     trainset = QADataset(question_answer(train_df), tokenizer)
     valset = QADataset(question_answer(val_df) ,tokenizer)
     testset = QADataset(question_answer(test_df), tokenizer)

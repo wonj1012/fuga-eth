@@ -1,14 +1,34 @@
 from transformers import GPTJForCausalLM, GPT2Tokenizer
-from typing import Tuple
+from typing import Tuple, Dict, Any
 import torch
 from torch.utils.data import Dataset, DataLoader
 
 from src.dataprocessing import *
 
+from gpt_model import train_gpt
+
 class GPTClient:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Dict[str, Any]) -> None:
         """
         Constructor of GPTClient class.
+
+        Args:
+            config (dict): {batch_size (int): The batch size to use for training,
+                            learning_rate (float): The learning rate to use for training,
+                            local_epochs (int): The number of epochs to train for,
+                            val_steps (int): The number of steps to validate for}
+
+        Returns:
+            None
+        """
+        self.model: GPTJForCausalLM = GPTJForCausalLM.from_pretrained("hivemind/gpt-j-6B-8bit", low_cpu_mem_usage=True)
+        self.tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained("hivemind/gpt-j-6B-8bit")
+        self.config: Dict[str, Any] = config
+        self.trainset, self.valset, self.testset: Dataset = None, None, None
+    
+    def set_config(self, config: Dict[str, Any]) -> None:
+        """
+        Set the configuration parameters.
 
         Args:
             config (dict): The dictionary containing configuration parameters for GPTClient.
@@ -16,14 +36,9 @@ class GPTClient:
         Returns:
             None
         """
-        self.model: GPTJForCausalLM = GPTJForCausalLM.from_pretrained("hivemind/gpt-j-6B-8bit", low_cpu_mem_usage=True)
-        self.tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained("hivemind/gpt-j-6B-8bit")
-        self.config: dict = config
-        self.trainset: Dataset = None
-        self.valset: Dataset = None
-        self.testset: Dataset = None
+        self.config = config
     
-    def load_dataset(self, trainset: Dataset, valset: Dataset, testset: Dataset) -> None:
+    def load_dataset(self, path: str = "data/web3mon.xlsx") -> None:
         """
         Load datasets for training.
 
@@ -35,9 +50,7 @@ class GPTClient:
         Returns:
             None
         """
-        self.trainset = trainset
-        self.valset = valset
-        self.testset = testset
+        self.trainset, self.valset, self.testset = get_dataset(path)
         
     def get_parameters(self) -> dict:
         """
@@ -60,7 +73,7 @@ class GPTClient:
         """
         self.model.load_state_dict(parameters)
     
-    def fit(self, parameters: dict, config: dict) -> Tuple[dict, int]:
+    def fit(self, parameters: dict) -> Tuple[dict, int]:
         """
         Train the model and return the trained parameters and number of batches.
 
@@ -70,19 +83,13 @@ class GPTClient:
 
         Returns:
             Tuple[dict, int]: A tuple containing trained parameters dictionary and number of batches.
-        """
+        """        
         self.set_parameters(parameters)
-        trainloader = DataLoader(self.trainset, batch_size=config["batch_size"], shuffle=True)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=config["lr"])
-        self.model.train()
-        for batch in trainloader:
-            optimizer.zero_grad()
-            input_ids, labels = batch
-            outputs = self.model(input_ids=input_ids, labels=labels)
-            loss = outputs.loss
-            loss.backward()
-            optimizer.step()
-        return self.get_parameters(), len(trainloader)
+        trainloader = DataLoader(self.trainset, batch_size=self.config["batch_size"], shuffle=True)
+        valloader = DataLoader(self.valset, batch_size=self.config["batch_size"], shuffle=True)
+        result = train_gpt(self.model, self.tokenizer, trainloader, valloader, self.config["learning_rate"], self.config["local_epochs"], self.config["val_steps"])
+        return self.get_parameters(), len(trainloader), result
+    
     
     def generate_answer(self, data: str, config: dict) -> str:
         """

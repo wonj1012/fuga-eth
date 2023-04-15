@@ -45,7 +45,7 @@ class QADataset(Dataset):
 
         return input_ids
 
-def load_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1) -> Tuple[Dataset, Dataset, Dataset]:
+def get_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1) -> Tuple[Dataset, Dataset, Dataset]:
     """
     Loads and returns the train, validation, and test datasets.
     Args:
@@ -108,7 +108,7 @@ def add_prefix_special_username(df: pd.DataFrame, special_username_dict: Dict[st
         pd.DataFrame: The modified DataFrame.
     """
     for username in special_username_dict:
-        df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + ' : ' + df['Content'].astype(str)
+        df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + ': ' + df['Content'].astype(str)
     return df
 
 
@@ -157,7 +157,7 @@ def question_answer(df: pd.DataFrame) -> List[Tuple[str, str]]:
     return qa
     
 
-def split_dataframe(df: pd.DataFrame, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame):
+def split_dataframe(df: pd.DataFrame, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     assert train_ratio + val_ratio + test_ratio == 1, "The sum of ratios must equal 1."
     
     train_index = int(len(df) * train_ratio)

@@ -1,55 +1,77 @@
-from typing import List
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from transformers import GPT2Tokenizer
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import GPT2Tokenizer
-import pandas as pd
+from typing import List, Tuple
 
 class QADataset(Dataset):
-    def __init__(self, questions: List[str], answers: List[str], tokenizer: GPT2Tokenizer):
-        self.questions = questions
-        self.answers = answers
+    """
+    Dataset class for question-answer pairs.
+    """
+    def __init__(self, data: List[Tuple[str, str]], tokenizer: GPT2Tokenizer, max_length: int = 512):
+        """
+        Args:
+        data: List of tuples containing questions and answers.
+        tokenizer: Tokenizer to use for encoding the input.
+        max_length: Maximum sequence length to use when encoding the input.
+        """
+        self.data = data
         self.tokenizer = tokenizer
+        self.max_length = max_length
 
     def __len__(self):
-        return len(self.questions)
+        """
+        Returns the number of samples in the dataset.
+        """
+        return len(self.data)
 
     def __getitem__(self, idx):
-        question = self.questions[idx]
-        answer = self.answers[idx]
-        max_length = 512
-        input_text = question + self.tokenizer.eos_token + answer + self.tokenizer.eos_token
-        input_ids = self.tokenizer.encode(input_text, add_special_tokens=True, max_length=max_length, truncation=True, padding="max_length", return_tensors="pt")
+        """
+        Returns the encoded input sequence for the given index.
+        """
+        question, answer = self.data[idx]
+        input_text = f"{question}{self.tokenizer.eos_token}{answer}{self.tokenizer.eos_token}"
+        input_ids = self.tokenizer.encode(
+            input_text,
+            add_special_tokens=True,
+            max_length=self.max_length,
+            truncation=True,
+            padding="max_length",
+            return_tensors="pt",
+        )
 
         return input_ids
 
-def load_dataset(file_path: str):
-    # 파일로부터 질문과 답변 쌍을 읽어옴
-    # xlsx 파일을 pandas DataFrame으로 읽기
+def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, random_state: int = 42) -> Tuple[Dataset, Dataset, Dataset]:
+    """
+    Loads and returns the train, validation, and test datasets.
+    Args:
+    file_path: Path to the Excel file containing the question-answer pairs.
+    test_size: The proportion of the dataset to include in the test split.
+    val_size: The proportion of the dataset to include in the validation split.
+    random_state: The random state used to split the dataset.
+    Returns:
+    A tuple of Dataset objects containing the train, validation, and test datasets.
+    """
+    # Read the Excel file into a pandas DataFrame
     df = pd.read_excel(file_path)
 
-    # Content column을 기준으로 질문과 답변을 나누어 리스트에 저장
-    questions = []
-    answers = []
-    for content in df['Content']:
-        qa = content.split('\n')
-        questions.append(qa[0])
-        answers.append(qa[1])
+    # Split the data into training and test sets
+    train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
 
-    # 질문과 답변 쌍을 구분하고 리스트에 저장
-    questions = []
-    answers = []
-    for line in lines:
-        question, answer = line.strip().split('\t')
-        questions.append(question)
-        answers.append(answer)
+    # Split the training data into training and validation sets
+    train_df, val_df = train_test_split(train_df, test_size=val_size, random_state=random_state)
 
-    # 토크나이저 초기화
+    # Create the datasets
     tokenizer = GPT2Tokenizer.from_pretrained("hivemind/gpt-j-6B-8bit")
+    trainset = QADataset(train_df[['Content', 'Content']].values.tolist(), tokenizer)
+    valset = QADataset(val_df[['Content', 'Content']].values.tolist(), tokenizer)
+    testset = QADataset(test_df[['Content', 'Content']].values.tolist(), tokenizer)
 
-    # 토큰화된 데이터셋 생성
-    dataset = QADataset(questions, answers, tokenizer)
+    return trainset, valset, testset
 
-    return dataset
+
 
 # 데이터셋 불러오기
 dataset = load_dataset('data/web3mon.xlsx')

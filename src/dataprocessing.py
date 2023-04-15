@@ -1,5 +1,4 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from transformers import GPT2Tokenizer
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -7,8 +6,6 @@ from typing import List, Tuple, Dict
 import re
 import nltk
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from nltk.sentiment import SentimentIntensityAnalyzer
 
 class QADataset(Dataset):
     """
@@ -48,7 +45,7 @@ class QADataset(Dataset):
 
         return input_ids
 
-def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, random_state: int = 42) -> Tuple[Dataset, Dataset, Dataset]:
+def load_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1) -> Tuple[Dataset, Dataset, Dataset]:
     """
     Loads and returns the train, validation, and test datasets.
     Args:
@@ -64,13 +61,12 @@ def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, 
     
     special_user = {'Jaewon': 'admin'}
     df = df.pipe(groupby_username).pipe(add_prefix_special_username, special_username_dict=special_user)
+    df = df.pipe(nltk_preprocessing).pipe(remove_links_and_emails)
 
-    # Split the data into training and test sets
-    train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
+    train_df, val_df, test_df = split_dataframe(df,val_ratio=val_ratio, test_ratio=test_ratio, train_ratio = 1 - val_ratio - test_ratio)
 
-    # Split the training data into training and validation sets
-    train_df, val_df = train_test_split(train_df, test_size=val_size, random_state=random_state)
-
+    print(train_df)
+    
     # Create the datasets
     tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-j-6B")
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
@@ -109,46 +105,60 @@ def add_prefix_special_username(df: pd.DataFrame, special_username_dict: Dict[st
     Returns:
         pd.DataFrame: The modified DataFrame.
     """
-    for i in range(len(df)):
-        print(df['Content'][i])
     for username in special_username_dict:
         df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + ': ' + df['Content'].astype(str)
     return df
 
 
 def nltk_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
-    # Download necessary resources from nltk
-    nltk.download('stopwords')
-    
-    # Tokenize and clean the text data
+    # Clean the text data
     def clean_text(text):
         text = re.sub(r'[^\w\s]', '', text)  # Remove special characters and punctuation
         text = re.sub(r'\d+', '', text)      # Remove numbers
         text = re.sub(r'\s+', ' ', text)     # Remove extra spaces
         return text.strip()
 
-    df['clean_content'] = df['Content'].apply(clean_text)
+    df['Content'] = df['Content'].apply(clean_text)
 
     # Normalize the text data
+    nltk.download('stopwords')
     stop_words = set(stopwords.words('english'))
     
-    # lowercase, remove stop words
-    df['clean_content'] = df['clean_content'].apply(lambda x: ' '.join([word.lower() for word in x.split() if word not in stop_words]))
+    # Lowercase, remove stop words
+    df['Content'] = df['Content'].apply(lambda x: ' '.join([word.lower() for word in x.split() if word not in stop_words]))
+
+    return df
+
+def remove_links_and_emails(df: pd.DataFrame) -> pd.DataFrame:
+    def clean_links_and_emails(text):
+        # Remove email addresses
+        text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', text)
+
+        # Remove URLs
+        text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+
+        # Remove other links (e.g., ftp, file, etc.)
+        text = re.sub(r'\b(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+:\\/\\/(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+
+        return text
+
+    df['Content'] = df['Content'].apply(clean_links_and_emails)
+    
+    return df
+
+def split_dataframe(df: pd.DataFrame, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame):
+    assert train_ratio + val_ratio + test_ratio == 1, "The sum of ratios must equal 1."
+    
+    train_index = int(len(df) * train_ratio)
+    val_index = int(len(df) * (train_ratio + val_ratio))
+
+    train_df = df.iloc[:train_index]
+    val_df = df.iloc[train_index:val_index]
+    test_df = df.iloc[val_index:]
+
+    return train_df, val_df, test_df
 
 
-def remove_links_and_emails(text):
-    # Remove email addresses
-    text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', text)
-
-    # Remove URLs
-    text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
-
-    # Remove other links (e.g., ftp, file, etc.)
-    text = re.sub(r'\b(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+:\\/\\/(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
-
-    return text
-
-
-def preprocess_input(data: str):
-    # do some preprocessing
-    return data
+def preprocess_input(question: str) -> str:
+    # do some preprocessing for the user's question
+    return question

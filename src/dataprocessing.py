@@ -4,6 +4,11 @@ from transformers import GPT2Tokenizer
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import List, Tuple, Dict
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.sentiment import SentimentIntensityAnalyzer
 
 class QADataset(Dataset):
     """
@@ -109,6 +114,39 @@ def add_prefix_special_username(df: pd.DataFrame, special_username_dict: Dict[st
     for username in special_username_dict:
         df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + ': ' + df['Content'].astype(str)
     return df
+
+
+def nltk_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
+    # Download necessary resources from nltk
+    nltk.download('stopwords')
+    
+    # Tokenize and clean the text data
+    def clean_text(text):
+        text = re.sub(r'[^\w\s]', '', text)  # Remove special characters and punctuation
+        text = re.sub(r'\d+', '', text)      # Remove numbers
+        text = re.sub(r'\s+', ' ', text)     # Remove extra spaces
+        return text.strip()
+
+    df['clean_content'] = df['Content'].apply(clean_text)
+
+    # Normalize the text data
+    stop_words = set(stopwords.words('english'))
+    
+    # lowercase, remove stop words
+    df['clean_content'] = df['clean_content'].apply(lambda x: ' '.join([word.lower() for word in x.split() if word not in stop_words]))
+
+
+def remove_links_and_emails(text):
+    # Remove email addresses
+    text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', text)
+
+    # Remove URLs
+    text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+
+    # Remove other links (e.g., ftp, file, etc.)
+    text = re.sub(r'\b(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+:\\/\\/(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+
+    return text
 
 
 def preprocess_input(data: str):

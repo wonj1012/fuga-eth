@@ -59,10 +59,9 @@ def load_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1
     # Read the Excel file into a pandas DataFrame
     df = pd.read_excel(file_path)[['Author username', 'Content']]
     
-    special_user = {'Jaewon': 'admin'}
+    special_user = {'Jaewon': 'gm'}
     df = df.pipe(groupby_username).pipe(remove_links_and_emails).pipe(nltk_preprocessing)
     df = df.pipe(nltk_preprocessing).pipe(add_prefix_special_username, special_username_dict=special_user)
-    
 
     train_df, val_df, test_df = split_dataframe(df,val_ratio=val_ratio, test_ratio=test_ratio, train_ratio = 1 - val_ratio - test_ratio)
 
@@ -129,7 +128,8 @@ def nltk_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
     
     # Lowercase, remove stop words
     df['Content'] = df['Content'].apply(lambda x: ' '.join([word.lower() for word in x.split() if word not in stop_words]))
-
+    df = df[df['Content'] != '']
+    
     return df
 
 def remove_links_and_emails(df: pd.DataFrame) -> pd.DataFrame:

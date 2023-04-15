@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "./PeerSystem.sol";
 
 contract FugaController is PeerSystem {
-    event ServerMessage(string field);
+    event ServerMessage(string field, address sender);
     event getConfigMessage(bool self_centered, uint batch_size, string learning_rate, uint local_epochs, uint val_steps);
     event getClientMessage(string model_hash, uint num_sample, uint score);
     event FitInsMessage(string[] model_hashes, uint[] num_samples, uint[] scores);
@@ -82,7 +82,7 @@ contract FugaController is PeerSystem {
         clientRound[msg.sender] = currentRound;
         currentClients.push(msg.sender);
         lastJoinTime = block.timestamp;
-        emit ServerMessage("JoinRound");
+        emit ServerMessage("JoinRound", msg.sender);
     }
 
     function ConfigRes() external onlyCurrentClients currentStage(Stage.Config) checkStatus(Status.Ready) {
@@ -92,7 +92,7 @@ contract FugaController is PeerSystem {
             stage = Stage.Fit;
             currentCompelete = 0;
             distributePeers(config.FitNum);
-            emit ServerMessage("FitIns");
+            emit ServerMessage("FitIns", msg.sender);
         }
     }
 
@@ -122,7 +122,7 @@ contract FugaController is PeerSystem {
             stage = Stage.Evaluate;
             currentCompelete = 0;
             distributePeers(config.EvalNum);
-            emit ServerMessage("EvaluateIns");
+            emit ServerMessage("EvaluateIns", msg.sender);
         }
     }
 
@@ -149,6 +149,7 @@ contract FugaController is PeerSystem {
                 }
             }
         }
+        currentCompelete++;
         client[msg.sender].status = Status.EvaluateRes;
         if(currentCompelete == currentClients.length){
             stage = Stage.Finished;
@@ -200,18 +201,18 @@ contract FugaController is PeerSystem {
         currentRound++;
         if(currentRound > config.maxRound) {
             stage = Stage.Finished;
-            emit ServerMessage("Finished");
+            emit ServerMessage("Finished", msg.sender);
         }
         else{
             stage = Stage.Ready;
-            emit ServerMessage("Ready");
+            emit ServerMessage("Ready", msg.sender);
         }
     }
 
     function startRound() external onlyCurrentClients {
-        if(lastJoinTime < block.timestamp && stage==Stage.Ready) {
+        if(lastJoinTime + 20 <= block.timestamp && stage==Stage.Ready) {
             stage = Stage.Config;
-            emit ServerMessage("ConfigIns");
+            emit ServerMessage("ConfigIns", msg.sender);
         }
     }
 } 

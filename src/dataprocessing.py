@@ -16,13 +16,16 @@ class QADataset(Dataset):
     def __getitem__(self, idx):
         question = self.questions[idx]
         answer = self.answers[idx]
-        input_ids = self.tokenizer.encode(question + answer, truncation=True, padding="max_length", max_length=512, return_tensors="pt")
-        return input_ids.squeeze()
+        max_length = 512
+        input_text = question + self.tokenizer.eos_token + answer + self.tokenizer.eos_token
+        input_ids = self.tokenizer.encode(input_text, add_special_tokens=True, max_length=max_length, truncation=True, padding="max_length", return_tensors="pt")
 
-def load_dataset(file_path):
+        return input_ids
+
+def load_dataset(file_path: str):
     # 파일로부터 질문과 답변 쌍을 읽어옴
     # xlsx 파일을 pandas DataFrame으로 읽기
-    df = pd.read_excel('data.xlsx')
+    df = pd.read_excel(file_path)
 
     # Content column을 기준으로 질문과 답변을 나누어 리스트에 저장
     questions = []

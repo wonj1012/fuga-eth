@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-import utils
+from dataprocessing import *
 
 class GPTClient:
     def __init__(self, config: dict) -> None:
@@ -95,7 +95,7 @@ class GPTClient:
         Returns:
             str: The generated answer for the given input data.
         """
-        data = utils.preprocess_input(data)
+        data = preprocess_input(data)
         input_ids = self.tokenizer.encode(data, return_tensors="pt")
         generated_tokens = self.model.generate(input_ids, **config)
         answer = self.tokenizer.decode(generated_tokens[0], skip_special_tokens=True)

@@ -60,12 +60,15 @@ def load_dataset(file_path: str, val_ratio: float = 0.1, test_ratio: float = 0.1
     df = pd.read_excel(file_path)[['Author username', 'Content']]
     
     special_user = {'Jaewon': 'admin'}
-    df = df.pipe(groupby_username).pipe(add_prefix_special_username, special_username_dict=special_user)
-    df = df.pipe(nltk_preprocessing).pipe(remove_links_and_emails)
+    df = df.pipe(groupby_username).pipe(remove_links_and_emails).pipe(nltk_preprocessing)
+    df = df.pipe(nltk_preprocessing).pipe(add_prefix_special_username, special_username_dict=special_user)
+    
 
     train_df, val_df, test_df = split_dataframe(df,val_ratio=val_ratio, test_ratio=test_ratio, train_ratio = 1 - val_ratio - test_ratio)
 
-    print(train_df)
+    # print(train_df)
+    # print(val_df)
+    print(test_df)
     
     # Create the datasets
     tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-j-6B")
@@ -106,7 +109,7 @@ def add_prefix_special_username(df: pd.DataFrame, special_username_dict: Dict[st
         pd.DataFrame: The modified DataFrame.
     """
     for username in special_username_dict:
-        df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + df['Content'].astype(str)
+        df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + ' : ' + df['Content'].astype(str)
     return df
 
 
@@ -148,10 +151,10 @@ def remove_links_and_emails(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def question_answer(df: pd.DataFrame) -> List[Tuple[str, str]]:
-        qa = []
-        for i in range(len(df['Content'])):
-            qa.append(df['Content'][i], df['Content'][i+1])
-        return qa
+    qa = []
+    for i in range(len(df['Content']) - 1):
+        qa.append((df['Content'][i], df['Content'][i+1]))
+    return qa
     
 
 def split_dataframe(df: pd.DataFrame, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame):
@@ -160,9 +163,9 @@ def split_dataframe(df: pd.DataFrame, train_ratio=0.8, val_ratio=0.1, test_ratio
     train_index = int(len(df) * train_ratio)
     val_index = int(len(df) * (train_ratio + val_ratio))
 
-    train_df = df.iloc[:train_index]
-    val_df = df.iloc[train_index:val_index]
-    test_df = df.iloc[val_index:]
+    train_df = df.iloc[:train_index].reset_index(drop=True)
+    val_df = df.iloc[train_index:val_index].reset_index(drop=True)
+    test_df = df.iloc[val_index:].reset_index(drop=True)
 
     return train_df, val_df, test_df
 

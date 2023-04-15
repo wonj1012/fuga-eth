@@ -3,13 +3,13 @@ from sklearn.model_selection import train_test_split
 from transformers import GPT2Tokenizer
 import torch
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 class QADataset(Dataset):
     """
     Dataset class for question-answer pairs.
     """
-    def __init__(self, data: List[Tuple[str, str]], tokenizer: GPT2Tokenizer, max_length: int = 512):
+    def __init__(self, data: List[Tuple[str, str]], tokenizer: GPT2Tokenizer, max_length: int = 128):
         """
         Args:
         data: List of tuples containing questions and answers.
@@ -55,9 +55,10 @@ def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, 
     A tuple of Dataset objects containing the train, validation, and test datasets.
     """
     # Read the Excel file into a pandas DataFrame
-    df = pd.read_excel(file_path)['Author username', 'Content']
+    df = pd.read_excel(file_path)[['Author username', 'Content']]
     
-    df = df.pipe(groupby_username)
+    special_user = {'Jaewon': 'admin'}
+    df = df.pipe(groupby_username).pipe(add_prefix_special_username, special_username_dict=special_user)
 
     # Split the data into training and test sets
     train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
@@ -76,11 +77,23 @@ def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, 
 
 
 def groupby_username(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.groupby((df['Author username'] != df['Author username'].shift()).cumsum()).apply(lambda x: pd.Series({'username': x['Author username'].iloc[0], 'content': ' '.join(x['Content'].fillna(''))})).reset_index(drop=True)
+    df = df.groupby((df['Author username'] != df['Author username'].shift()).cumsum()).apply(lambda x: pd.Series({'Author username': x['Author username'].iloc[0], 'Content': ' '.join(x['Content'].fillna(''))})).reset_index(drop=True)
+    return df
+
+def normalize_content(df: pd.DataFrame) -> pd.DataFrame:
+    """
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+
+    Returns:
+        pd.DataFrame: The modified DataFrame.
+    """
+    
     return df
 
 
-def add_prefix_special_username(username: str, df: pd.DataFrame) -> pd.DataFrame:
+def add_prefix_special_username(df: pd.DataFrame, special_username_dict: Dict[str, str]) -> pd.DataFrame:
     """
     Add username prefix to special user such as admin or bot.
 
@@ -91,9 +104,11 @@ def add_prefix_special_username(username: str, df: pd.DataFrame) -> pd.DataFrame
     Returns:
         pd.DataFrame: The modified DataFrame.
     """
-    df.loc[df['Author username'] == username, 'Content'] = username + '_' + df['Content'].astype(str)
+    for i in range(len(df)):
+        print(df['Content'][i])
+    for username in special_username_dict:
+        df.loc[df['Author username'] == username, 'Content'] = special_username_dict[username] + ': ' + df['Content'].astype(str)
     return df
-
 
 
 def preprocess_input(data: str):

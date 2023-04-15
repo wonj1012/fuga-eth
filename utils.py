@@ -28,6 +28,27 @@ def s3_connection():
         print("s3 bucket connected!")
         return s3
 
+
+def aggregate_fit(client, model_hashes, num_samples, scores, config):
+    params = []
+    for model_hash in model_hashes:
+        params.append(read_model(model_hash)) 
+        
+    # Normalize the evaluation scores
+    sum_scores = sum(scores)
+    norm_scores = [score / sum_scores for score in scores]
+
+    # Combine normalized evaluation scores with the dataset portion
+    sum_samples = sum(num_samples)
+    combined_weights = [norm_score * (num_sample / sum_samples) for norm_score, num_sample in zip(norm_scores, num_samples)]
+
+    # Calculate the weighted model updates
+    weighted_updates = [np.multiply(w, update) for w, update in zip(combined_weights, params)]
+    new_params = [sum(updates) for updates in zip(*weighted_updates)]
+
+    return client.fit(new_params,config)    
+
+
 def make_hash(params):
     # Concatenate all arrays in the list of parameters
     concatenated_array = np.concatenate([param.flatten() for param in params])

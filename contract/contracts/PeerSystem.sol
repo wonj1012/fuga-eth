@@ -5,16 +5,18 @@ contract PeerSystem {
 
     enum Stage{
         Ready,
+        Config,
         Fit,
         Evaluate,
-        EvalFinished
+        Finished
     }
+    Stage internal stage;
 
-    Stage internal stage = Stage.Ready;
     mapping(address => uint) internal clientRound;
-    address[] internal currentClients;
-    uint public currentRound = 1;
     mapping(address => address[]) internal clientPeers;
+    address[] internal currentClients;
+    uint internal currentRound = 1;
+    uint internal currentCompelete = 0;
 
     modifier onlyCurrentClients() {
         require(clientRound[msg.sender] == currentRound, "Client not in current round.");

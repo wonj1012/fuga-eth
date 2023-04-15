@@ -27,6 +27,9 @@ def listen_for_event(contract, event_name):
         time.sleep(60)
 
 def web3_connection(s3, w3, contract) -> Tuple[Callable[[], Dict], Callable[[Dict], None]]:
+    """
+    Creates a connection to the blockchain and returns a function to receive messages and a function to send messages.    
+    """
     # create a filter to listen for the specified event
     web3_message_iterator = listen_for_event(contract, "ServerMessage")
 
@@ -37,27 +40,11 @@ def web3_connection(s3, w3, contract) -> Tuple[Callable[[], Dict], Callable[[Dic
     return (receive, send)
 
 
-def aggregate_fit(client, model_hashes, num_samples, scores, config):
-    params = []
-    for model_hash in model_hashes:
-        params.append(read_model(model_hash)) 
-        
-    # Normalize the evaluation scores
-    sum_scores = sum(scores)
-    norm_scores = [score / sum_scores for score in scores]
-
-    # Combine normalized evaluation scores with the dataset portion
-    sum_samples = sum(num_samples)
-    combined_weights = [norm_score * (num_sample / sum_samples) for norm_score, num_sample in zip(norm_scores, num_samples)]
-
-    # Calculate the weighted model updates
-    weighted_updates = [np.multiply(w, update) for w, update in zip(combined_weights, params)]
-    new_params = [sum(updates) for updates in zip(*weighted_updates)]
-
-    return client.fit(new_params,config)    
-
-
 def handle_receive(client, s3, contract, msg):
+    """
+    Handles a received message.
+    Returns a tuple containing the response message, the number of samples and a boolean indicating whether the client should shut down.
+    """
     # check the field of the message
     field = msg['field']
 
@@ -70,8 +57,9 @@ def handle_receive(client, s3, contract, msg):
         num_samples =response[1]
         scores = response[2]
         batch_size = response[3]
-        local_epochs = response[4]
-        config = {'batch_size': batch_size, 'local_epochs': local_epochs}
+        learning_rate = response[4]
+        local_epochs = response[5]
+        config = {'batch_size': batch_size, 'lr' : learning_rate ,'local_epochs': local_epochs}
 
         for model_hash in model_hashes:
             object_key = f'models/{model_hash}.bin'
@@ -89,6 +77,7 @@ def handle_receive(client, s3, contract, msg):
         # return the result of fit
         return {'field':'FitRes', 'data': fitres},0, True
     
+    # if the message is a request for the EvaluateIns, evaluate the model and return the result
     elif field == "EvaluateIns":
         # evaluate the model on client
         response = contract.functions.EvaluateIns().call()
@@ -108,6 +97,8 @@ def handle_receive(client, s3, contract, msg):
             # check hash value
             check_model(model_hash)
             param = read_model(model_hash)
+
+            # evaluate the model
             loss, _, _ = client.evaluate(param,config)
             evalres[model_hash] = loss
 
@@ -115,8 +106,14 @@ def handle_receive(client, s3, contract, msg):
 
 
 def handle_send(s3, w3, contract, msg, sender_address, sender_private_key):
-    
+    """
+    Handles a message to be sent.
+    Returns the transaction receipt.
+    """
+    # check the field of the message
     field = msg['field']
+
+    # If the message is a FitRes, save model and upload model hash to the blockchain
     if field == 'FitRes':
         # get the message params
         parameters_prime, num_examples_train, results = msg['data']
@@ -133,6 +130,7 @@ def handle_send(s3, w3, contract, msg, sender_address, sender_private_key):
         # get the function object from the contract ABI
         function = getattr(contract.functions, 'FitRes')(*args)
 
+    # If the message is a EvaluateRes, upload the result to the blockchain
     elif field == 'EvaluateRes':
         # get the message params
         args = [msg['data']]
@@ -154,13 +152,8 @@ def handle_send(s3, w3, contract, msg, sender_address, sender_private_key):
         'nonce': w3.eth.getTransactionCount(sender_address),
     })
 
-    # Sign the transaction
     signed_transaction = w3.eth.account.signTransaction(transaction, account.key)
-
-    # Send the transaction
     transaction_hash = w3.eth.sendRawTransaction(signed_transaction.rawTransaction)
-
-    # Wait for the transaction to be mined
     transaction_receipt = w3.eth.waitForTransactionReceipt(transaction_hash)
 
     return transaction_receipt

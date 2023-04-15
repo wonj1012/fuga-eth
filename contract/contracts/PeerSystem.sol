@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 contract PeerSystem {
-
     enum Stage{
         Ready,
         Config,
@@ -15,8 +14,9 @@ contract PeerSystem {
     mapping(address => uint) internal clientRound;
     mapping(address => address[]) internal clientPeers;
     address[] internal currentClients;
-    uint internal currentRound = 1;
-    uint internal currentCompelete = 0;
+    uint internal currentRound;
+    uint internal currentCompelete;
+    uint internal lastJoinTime;
 
     modifier onlyCurrentClients() {
         require(clientRound[msg.sender] == currentRound, "Client not in current round.");
@@ -26,12 +26,6 @@ contract PeerSystem {
     modifier currentStage(Stage _stage){
         require(_stage==stage, "Current stage is not the expected stage.");
         _;
-    }
-
-    function joinRound() currentStage(Stage.Ready) external {
-        require(clientRound[msg.sender] < currentRound, "Client already joined this round.");
-        clientRound[msg.sender] = currentRound;
-        currentClients.push(msg.sender);
     }
 
     function randPermutaion(address[] memory _arr) internal view returns (address[] memory) {

@@ -5,6 +5,10 @@ import "./PeerSystem.sol";
 
 contract FugaController is PeerSystem {
     event ServerMessage(string field);
+    event getConfigMessage(bool self_centered, uint batch_size, string learning_rate, uint local_epochs, uint val_steps);
+    event getClientMessage(string model_hash, uint num_sample, uint score);
+    event FitInsMessage(string[] model_hashes, uint[] num_samples, uint[] scores);
+    event EvaluateInsMessage(string[] model_hashes);
 
     enum Status{
         Ready,
@@ -17,8 +21,11 @@ contract FugaController is PeerSystem {
 
     struct Config {
         bool self_centered;
+        uint maxRound;
+        uint FitNum;
+        uint EvalNum;
         uint batch_size;
-        uint learning_rate;
+        string learning_rate;
         uint local_epochs;
         uint val_steps;
     }
@@ -27,11 +34,18 @@ contract FugaController is PeerSystem {
     struct Client {
         Status status;
         string model_hash;
-        uint num_samples;
-        uint scores;
+        uint num_sample;
+        uint score;
         uint updateCount;
         uint[] evals;
     }
+
+    constructor(uint _maxRound, bool _self_centered, uint _FitNum, uint _EvalNum, uint _batch_size, string memory _learning_rate, uint _local_epochs, uint _val_steps){
+        stage = Stage.Ready;
+        currentRound = 1;
+        setConfig(_maxRound, _self_centered, _FitNum, _EvalNum, _batch_size, _learning_rate, _local_epochs, _val_steps);
+    }
+
     mapping(address => Client) private client;
 
     modifier checkStatus(Status _status){
@@ -39,29 +53,50 @@ contract FugaController is PeerSystem {
         _;
     }
 
-    function getConfig() onlyCurrentClients currentStage(Stage.Ready) checkStatus(Status.Ready) external view returns(bool, uint, uint, uint, uint){
-        return (config.self_centered, config.batch_size, config.learning_rate, config.local_epochs, config.val_steps);
+    function getClient() external {
+    // view returns(string memory, uint, uint){
+        emit getClientMessage(client[msg.sender].model_hash, client[msg.sender].num_sample, client[msg.sender].score);
+        // return (client[msg.sender].model_hash, client[msg.sender].num_sample, client[msg.sender].score);
     }
 
-    function setConfig(bool _self_centered, uint _batch_size, uint _learning_rate, uint _local_epochs, uint _val_steps) private {
+    function getConfig() onlyCurrentClients currentStage(Stage.Config) checkStatus(Status.Ready) external {
+    // view returns(bool, uint, string memory, uint, uint){
+        emit getConfigMessage(config.self_centered, config.batch_size, config.learning_rate, config.local_epochs, config.val_steps);
+        // return (config.self_centered, config.batch_size, config.learning_rate, config.local_epochs, config.val_steps);
+    }
+
+    function setConfig(uint _maxRound, bool _self_centered, uint _FitNum, uint _EvalNum, uint _batch_size, string memory _learning_rate, uint _local_epochs, uint _val_steps) internal {
         config.self_centered = _self_centered;
+        config.maxRound = _maxRound;
+        config.FitNum = _FitNum;
+        config.EvalNum = _EvalNum;
         config.batch_size = _batch_size;
         config.learning_rate = _learning_rate;
         config.local_epochs = _local_epochs;
         config.val_steps = _val_steps;
     }
 
-    function ConfigRes() external onlyCurrentClients currentStage(Stage.Ready) checkStatus(Status.Ready) {
+    function joinRound() currentStage(Stage.Ready) external {
+        require(clientRound[msg.sender] < currentRound, "Client already joined this round.");
+        client[msg.sender].status = Status.Ready;
+        clientRound[msg.sender] = currentRound;
+        currentClients.push(msg.sender);
+        lastJoinTime = block.timestamp;
+        emit ServerMessage("JoinRound");
+    }
+
+    function ConfigRes() external onlyCurrentClients currentStage(Stage.Config) checkStatus(Status.Ready) {
         client[msg.sender].status = Status.Config;
         currentCompelete++;
         if(currentCompelete == currentClients.length){
             stage = Stage.Fit;
             currentCompelete = 0;
+            distributePeers(config.FitNum);
             emit ServerMessage("FitIns");
         }
     }
 
-    function FitIns() external onlyCurrentClients currentStage(Stage.Fit) checkStatus(Status.Config) returns(string[] memory, uint[] memory, uint[] memory) {
+    function FitIns() external onlyCurrentClients currentStage(Stage.Fit) checkStatus(Status.Config) {
         address[] memory peers = clientPeers[msg.sender];
         uint numPeers = peers.length;
         string[] memory model_hashes = new string[](numPeers);
@@ -69,27 +104,29 @@ contract FugaController is PeerSystem {
         uint[] memory scores = new uint[](numPeers);
         for(uint i=0; i<numPeers; i++) {
             model_hashes[i] = client[peers[i]].model_hash;
-            num_samples[i] = client[peers[i]].num_samples;
-            scores[i] = client[peers[i]].scores;
+            num_samples[i] = client[peers[i]].num_sample;
+            scores[i] = client[peers[i]].score;
         }
         client[msg.sender].status = Status.FitIns;
-        return (model_hashes, num_samples, scores);
+        // return (model_hashes, num_samples, scores);
+        emit FitInsMessage(model_hashes, num_samples, scores);
     }
 
-    function FitRes(string memory _model_hash, uint _num_samples) external onlyCurrentClients currentStage(Stage.Fit) checkStatus(Status.FitIns) {
+    function FitRes(string memory _model_hash, uint _num_sample) external onlyCurrentClients currentStage(Stage.Fit) checkStatus(Status.FitIns) {
         client[msg.sender].model_hash = _model_hash;
-        client[msg.sender].num_samples = _num_samples;
+        client[msg.sender].num_sample = _num_sample;
         client[msg.sender].updateCount++;
         client[msg.sender].status = Status.FitRes;
         currentCompelete++;
         if(currentCompelete == currentClients.length){
             stage = Stage.Evaluate;
             currentCompelete = 0;
+            distributePeers(config.EvalNum);
             emit ServerMessage("EvaluateIns");
         }
     }
 
-    function EvaluateIns() external onlyCurrentClients currentStage(Stage.Evaluate) checkStatus(Status.FitRes) returns(string[] memory) {
+    function EvaluateIns() external onlyCurrentClients currentStage(Stage.Evaluate) checkStatus(Status.FitRes) {
         uint numPeers = clientPeers[msg.sender].length;
         string[] memory model_hashes = new string[](numPeers);
         for(uint i=0; i<numPeers; i++) {
@@ -97,7 +134,8 @@ contract FugaController is PeerSystem {
         }
         delete client[msg.sender].evals;
         client[msg.sender].status = Status.EvaluateIns;
-        return (model_hashes);
+        // return (model_hashes);
+        emit EvaluateInsMessage(model_hashes);
     }
 
     function EvaluateRes(string[] memory _model_hashes, uint[] memory _values) external onlyCurrentClients currentStage(Stage.Evaluate) checkStatus(Status.EvaluateIns) {
@@ -135,34 +173,45 @@ contract FugaController is PeerSystem {
         return data;
     }
 
-    function getMedian(uint[] memory data) public pure returns (uint) {
-        // Calculate the median of the data
-        uint n = data.length;
-        uint[] memory sortedData = sort(data);
-        uint median = n % 2 == 0 ? (sortedData[n/2 - 1] + sortedData[n/2]) / 2 : sortedData[n/2];
-
-        return median;
+    function medianEval() private {
+        for(uint i=0; i<currentClients.length; i++) {
+            uint[] memory evals = client[currentClients[i]].evals;
+            uint n = evals.length;
+            uint[] memory sortedData = sort(evals);
+            uint median = n % 2 == 0 ? (sortedData[n/2 - 1] + sortedData[n/2]) / 2 : sortedData[n/2];
+            client[currentClients[i]].score = median;
+        }
     }
 
-    function normaScore() private {
+    function normScore() private {
         uint totalScore = 0;
         for(uint i=0; i<currentClients.length; i++) {
-            totalScore += client[currentClients[i]].scores;
+            totalScore += client[currentClients[i]].score;
         }
         for(uint i=0; i<currentClients.length; i++) {
-            client[currentClients[i]].scores = client[currentClients[i]].scores * 100 / totalScore;
+            client[currentClients[i]].score = client[currentClients[i]].score * 100 / totalScore;
         }
     }
 
     function finishRound() currentStage(Stage.Finished) private {
-        for(uint i=0; i<currentClients.length; i++) {
-            uint[] memory evals = client[currentClients[i]].evals;
-            uint median = getMedian(evals);
-            client[currentClients[i]].scores = median;
-        }
+        medianEval();
+        normScore();
         delete currentClients;
         currentRound++;
-        stage = Stage.Ready;
-    } 
+        if(currentRound > config.maxRound) {
+            stage = Stage.Finished;
+            emit ServerMessage("Finished");
+        }
+        else{
+            stage = Stage.Ready;
+            emit ServerMessage("Ready");
+        }
+    }
 
+    function startRound() external onlyCurrentClients {
+        if(lastJoinTime < block.timestamp && stage==Stage.Ready) {
+            stage = Stage.Config;
+            emit ServerMessage("ConfigIns");
+        }
+    }
 } 

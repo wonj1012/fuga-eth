@@ -55,7 +55,9 @@ def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, 
     A tuple of Dataset objects containing the train, validation, and test datasets.
     """
     # Read the Excel file into a pandas DataFrame
-    df = pd.read_excel(file_path)
+    df = pd.read_excel(file_path)['Author username', 'Content']
+    
+    df = df.pipe(groupby_username)
 
     # Split the data into training and test sets
     train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
@@ -64,7 +66,8 @@ def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, 
     train_df, val_df = train_test_split(train_df, test_size=val_size, random_state=random_state)
 
     # Create the datasets
-    tokenizer = GPT2Tokenizer.from_pretrained("hivemind/gpt-j-6B-8bit")
+    tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-j-6B")
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     trainset = QADataset(train_df[['Content', 'Content']].values.tolist(), tokenizer)
     valset = QADataset(val_df[['Content', 'Content']].values.tolist(), tokenizer)
     testset = QADataset(test_df[['Content', 'Content']].values.tolist(), tokenizer)
@@ -72,15 +75,25 @@ def load_dataset(file_path: str, test_size: float = 0.1, val_size: float = 0.1, 
     return trainset, valset, testset
 
 
+def groupby_username(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.groupby((df['Author username'] != df['Author username'].shift()).cumsum()).apply(lambda x: pd.Series({'username': x['Author username'].iloc[0], 'content': ' '.join(x['Content'].fillna(''))})).reset_index(drop=True)
+    return df
 
-# 데이터셋 불러오기
-dataset = load_dataset('data/web3mon.xlsx')
 
-# DataLoader로 변환
-dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
+def add_prefix_special_username(username: str, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add username prefix to special user such as admin or bot.
 
-def add_username_prefix(username: str, data: str):
-    return username + ": " + data
+    Args:
+        username (str): The username to match against.
+        df (pd.DataFrame): The input DataFrame.
+
+    Returns:
+        pd.DataFrame: The modified DataFrame.
+    """
+    df.loc[df['Author username'] == username, 'Content'] = username + '_' + df['Content'].astype(str)
+    return df
+
 
 
 def preprocess_input(data: str):

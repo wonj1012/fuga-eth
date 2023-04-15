@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-from dataprocessing import *
+from src.dataprocessing import *
 
 class GPTClient:
     def __init__(self, config: dict) -> None:

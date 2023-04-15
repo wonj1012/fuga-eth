@@ -140,26 +140,30 @@ def handle_send(s3, w3, contract, msg, sender_address, sender_private_key):
         # get the function object from the contract ABI
         function = getattr(contract.functions, 'EvaluateRes')(*args)
 
-    # build the transaction dictionary
-    transaction = {
-        'from': sender_address,
+    # Create a transaction for calling the function
+    transaction = function.buildTransaction()
+
+    # Estimate the gas required for the transaction
+    gas_estimate = w3.eth.estimateGas(transaction)
+
+    # Set up the transaction parameters
+    transaction.update({
+    'from': sender_address,
         'to': contract.address,
-        'gas': w3.eth.estimateGas({'to': contract.address, 'data': function.encodeABI()}),
-        'gasPrice': w3.eth.gasPrice,
+        'gas': gas_estimate,
         'nonce': w3.eth.getTransactionCount(sender_address),
-        'data': function.encodeABI(),
-    }
+    })
 
-    # sign the transaction using the sender's private key
-    signed_txn = w3.eth.account.signTransaction(
-        transaction, sender_private_key)
+    # Sign the transaction
+    signed_transaction = w3.eth.account.signTransaction(transaction, account.key)
 
-    # send the signed transaction to the network
-    txn_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
+    # Send the transaction
+    transaction_hash = w3.eth.sendRawTransaction(signed_transaction.rawTransaction)
 
-    # wait for the transaction to be mined and return the receipt
-    txn_receipt = w3.eth.waitForTransactionReceipt(txn_hash)
-    return txn_receipt
+    # Wait for the transaction to be mined
+    transaction_receipt = w3.eth.waitForTransactionReceipt(transaction_hash)
+
+    return transaction_receipt
 
 
 

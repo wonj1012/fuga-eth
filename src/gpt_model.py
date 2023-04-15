@@ -1,17 +1,18 @@
 import torch
-import tqdm
+from tqdm.auto import tqdm
 import transformers
-from src.gpt8bit import *
+from torch.optim import AdamW
 from math import exp
+from torch.nn import functional as F
+from transformers import GPTJForCausalLM
 
 
 def train_gpt(gpt, trainloader, valloader, epochs, lr, tokenizer, device: str = "cpu"):
     gpt: GPTJForCausalLM
-    add_adapters(gpt)
     gpt.to(device)
 
     gpt.gradient_checkpointing_enable()
-    optimizer = Adam8bit(gpt.parameters(), lr=lr, weight_decay=0.01)
+    optimizer = AdamW(gpt.parameters(), lr=lr, weight_decay=0.01)
 
     num_training_steps = epochs * len(trainloader)
 

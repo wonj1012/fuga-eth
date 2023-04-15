@@ -21,14 +21,14 @@ class GPTClient:
         Returns:
             None
         """
-        self.model: GPTJForCausalLM = GPTJForCausalLM.from_pretrained("hivemind/gpt-j-6B-8bit", low_cpu_mem_usage=True)
+        self.model: GPTJForCausalLM = GPTJForCausalLM.from_pretrained("EleutherAI/gpt-j-6B")
         self.tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-j-6B")
         self.config: Dict[str, Any] = config
         self.trainset: Dataset = None
         self.valset: Dataset = None
         self.testset: Dataset = None
         # self.device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("mps")
+        self.device = "mps"
     
     def set_config(self, config: Dict[str, Any]) -> None:
         """
@@ -111,7 +111,7 @@ class GPTClient:
         loss, accuracy = evaluate_gpt(self.model, self.tokenizer, testloader)
         return loss, accuracy
     
-    def generate_answer(self, data: str, config: dict) -> str:
+    def generate_answer(self, text: str, config: dict) -> str:
         """
         Generate an answer to the given data.
 
@@ -122,8 +122,13 @@ class GPTClient:
         Returns:
             str: The generated answer for the given input data.
         """
-        data = preprocess_input(data)
-        input_ids = self.tokenizer.encode(data, return_tensors="pt")
-        generated_tokens = self.model.generate(input_ids, **config)
+        self.model: GPTJForCausalLM
+        text = preprocess_input(text)
+        self.tokenizer.pad_token = self.tokenizer.eos_token 
+        encoding = self.tokenizer(text, padding=True, truncation=True, max_length=32, return_tensors="pt")
+        input_ids = encoding["input_ids"]
+        attention_mask = encoding["attention_mask"]
+        input_ids = self.tokenizer.encode(text, return_tensors="pt")
+        generated_tokens = self.model.generate(input_ids, attention_mask=attention_mask, **config)
         answer = self.tokenizer.decode(generated_tokens[0], skip_special_tokens=True)
         return answer

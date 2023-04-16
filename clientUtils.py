@@ -10,8 +10,8 @@ from transformers import (
 )
 
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 
 def load_data():
     """Load IMDB data (training and eval)"""

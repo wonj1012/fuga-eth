@@ -6,6 +6,9 @@ import web3
 from web3_client_utils import *
 from imdbClient import IMDBClient
 
+PUBLIC_KEY = os.environ.get('PUBLIC_KEY')
+PRIVATE_KEY = os.environ.get('PRIVATE_KEY')
+
 def listen_for_event(contract, event_name):
     # create a filter to listen for the specified event
     event_filter = contract.events[event_name].createFilter(fromBlock='latest')
@@ -13,9 +16,12 @@ def listen_for_event(contract, event_name):
     while True:
         # check if any new events have been emitted
         for event in event_filter.get_new_entries():
-            # if the specified event has been emitted, return its message
-            if event.event == event_name:
-                yield event.args
+            try:
+                # if the specified event has been emitted, return its message
+                if event.event == event_name:
+                    yield event.args
+            except Exception as e:
+                print(f"Error processing event: {e}")
         # wait for new events
         time.sleep(5)
 
@@ -61,14 +67,14 @@ def handle_receive(client, msg, s3, w3, contract):
         function = getattr(contract.functions, 'startRound')()
 
     if field == "Ready" or field == "JoinRound":
-        send_transaction(w3, contract, function)
+        send_transaction(w3, contract, function, PUBLIC_KEY, PRIVATE_KEY)
         return None, 0, True
 
     # if the message is a request for the ConfigIns, set the Config data
     if field == "ConfigIns":
         print("config start")
         # receive the Config data
-        response = read_transaction(w3, contract, 'getConfig')
+        response = read_transaction(w3, contract, 'getConfig', PUBLIC_KEY, PRIVATE_KEY)
         
         self_centered = response['self_centered']
         batch_size = response['batch_size']
@@ -76,7 +82,7 @@ def handle_receive(client, msg, s3, w3, contract):
         local_epochs = response['local_epochs']
         val_steps = response['val_steps']
 
-        config = {'self_centered': self_centered, 'batch_size': batch_size, 'lr' : learning_rate ,'local_epochs': local_epochs, 'val_steps': val_steps}
+        config = {'self_centered': self_centered, 'batch_size': batch_size, 'learning_rate' : learning_rate ,'local_epochs': local_epochs, 'val_steps': val_steps}
 
         client.set_config(config)
 
@@ -86,7 +92,8 @@ def handle_receive(client, msg, s3, w3, contract):
     if field == "FitIns":
         print("fit start")
         # receive the Client data
-        response = read_transaction(w3, contract, 'getClient')
+        response = read_transaction(w3, contract, 'getClient', PUBLIC_KEY, PRIVATE_KEY)
+        print(response)
 
         self_model_hash = response['model_hash']
         self_num_sample = response['num_sample']
@@ -96,32 +103,39 @@ def handle_receive(client, msg, s3, w3, contract):
         num_samples = []
         scores = []
 
-        response = read_transaction(w3, contract, 'FitIns')
-        
+        response = read_transaction(w3, contract, 'FitIns', PUBLIC_KEY, PRIVATE_KEY)
+        print(response)
+
         other_model_hashes = response['model_hashes']
         other_num_samples =response['num_samples']
         other_scores = response['scores']
 
-        for model_hash in other_model_hashes:
-            object_key = f'models/{model_hash}.bin'
-            file_path = object_key
-            s3.download_file(BUCKET_NAME, object_key, file_path)
+        # if there is no other model, fit the model on client
+        if(other_model_hashes == ['']):
+            if(self_model_hash==''):
+                fitres = client.fit(client.get_parameters())
+        # if there is other model, aggregate the model
+        else:
+            for model_hash in other_model_hashes:
+                object_key = f'models/{model_hash}.bin'
+                file_path = object_key
+                s3.download_file(BUCKET_NAME, object_key, file_path)
 
-            # check hash value
-            if(check_model(model_hash)):
-                model_hashes.append(model_hash)
-                num_samples.append(other_num_samples)
-                scores.append(other_scores)
+                # check hash value
+                if(check_model(model_hash)):
+                    model_hashes.append(model_hash)
+                    num_samples.append(other_num_samples)
+                    scores.append(other_scores)
 
-        if(check_model(self_model_hash)):
-            model_hashes.append(self_model_hash)
-            num_samples.append(self_num_sample)
-            scores.append(sum(scores) if client.self_centered else self_score)
-            if(len(scores)==1, scores[0]==0):
-                scores[0] = 1
+            if(check_model(self_model_hash)):
+                model_hashes.append(self_model_hash)
+                num_samples.append(self_num_sample)
+                scores.append(sum(scores) if client.self_centered else self_score)
+                if(len(scores)==1, scores[0]==0):
+                    scores[0] = 1
 
-        # aggregate the model
-        fitres = aggregate_fit(client, model_hashes, num_samples, scores)
+            # aggregate the model
+            fitres = aggregate_fit(client, model_hashes, num_samples, scores)
 
         # return the result of fit
         return {'field':'FitRes', 'data': fitres},0, True
@@ -130,8 +144,8 @@ def handle_receive(client, msg, s3, w3, contract):
     elif field == "EvaluateIns":
         print("eval start")
         # evaluate the model on client
-        response = read_transaction(w3, contract, 'EvaluateIns')
-
+        response = read_transaction(w3, contract, 'EvaluateIns', PUBLIC_KEY, PRIVATE_KEY)
+        print(response)
         model_hashes = response['model_hashes']
         evalres = {}
 
@@ -175,7 +189,7 @@ def handle_send(msg, s3, w3, contract):
         model_hash = make_hash(parameters_prime)
 
         # save and upload the model
-        upload_model(s3, parameters_prime)
+        upload_model(s3, parameters_prime,model_hash)
 
         # prepare the arguments for the FitRes function
         args = [model_hash, num_examples_train]
@@ -189,13 +203,13 @@ def handle_send(msg, s3, w3, contract):
         # get the message params
         evalres = msg['data']
         model_hashes = list(evalres.keys())
-        values = list(evalres.values())
+        values = [int(value) for value in evalres.values()]
         args = [model_hashes, values]
 
         # get the function object from the contract ABI
         function = getattr(contract.functions, 'EvaluateRes')(*args)
 
-    send_transaction(w3, contract, function)
+    send_transaction(w3, contract, function, PUBLIC_KEY, PRIVATE_KEY)
 
 
 
@@ -212,6 +226,8 @@ def start_web3_client(client, contract_address, abi):
             server_message = receive()
             print("server message : ",server_message)
             if(server_message is not None):
+                if(server_message['field'] == "JoinRound" and server_message['sender'] != PUBLIC_KEY):
+                    continue
                 client_message, sleep_duration, keep_going = handle_receive(
                     client, server_message, s3, w3, contract
                 )
@@ -230,15 +246,18 @@ def start_web3_client(client, contract_address, abi):
         time.sleep(sleep_duration)
 
 if __name__ == "__main__":
-    # get the contract address and abi from the config file
+    # get the contract address and abi from the config file'
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c','--contract_address', required=True, type=str, default='config.json')
+    # parser.add_argument('-c','--contract_address', required=True, type=str, default='config.json')
     parser.add_argument('-p','--public_key', type=str, default=PUBLIC_KEY)
     parser.add_argument('-m','--private_key', type=str, default=PRIVATE_KEY)
     args = parser.parse_args()
 
-    contract_address = args.contract_address
-    set_setting(args.public_key, args.private_key)
+    # contract_address = args.contract_address
+    contract_address = input("contract address : ")
+    PUBLIC_KEY = args.public_key
+    PRIVATE_KEY = args.private_key
+    print(PUBLIC_KEY, PRIVATE_KEY)
     abi = json.load(open('contract/build/contracts/FugaController.json', 'r'))['abi']
 
     # get the client

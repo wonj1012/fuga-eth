@@ -5,7 +5,7 @@ import os
 import boto3
 from dotenv import load_dotenv
 import torch
-import web3
+import numpy as np
 
 # load .env
 load_dotenv()
@@ -13,17 +13,9 @@ load_dotenv()
 S3_ACCESS_KEY = os.environ.get('S3_ACCESS_KEY')
 S3_SCRETE_KEY = os.environ.get('S3_SCRETE_KEY')
 HTTP_PROVIDER = os.environ.get('HTTP_PROVIDER')
-PUBLIC_KEY = os.environ.get('PUBLIC_KEY')
-PRIVATE_KEY = os.environ.get('PRIVATE_KEY')
+
 # MNEMONIC = os.environ.get('MNEMONIC')
 BUCKET_NAME = 'fugaeth'
-
-def set_setting(public_key, private_key):
-    global PUBLIC_KEY
-    global PRIVATE_KEY
-    PUBLIC_KEY = public_key
-    PRIVATE_KEY = private_key
-
 
 # def get_private_key(MNEMONIC):
 #     w3 = web3.Web3()
@@ -33,7 +25,7 @@ def set_setting(public_key, private_key):
 
 # PRIVATE_KEY = get_private_key(MNEMONIC)
 
-def send_transaction(w3, contract, function):
+def send_transaction(w3, contract, function, PUBLIC_KEY, PRIVATE_KEY):
     """
     Sends a transaction to the blockchain.
     """
@@ -60,9 +52,9 @@ def send_transaction(w3, contract, function):
 
     return tx_recipt
 
-def read_transaction(w3, contract, function_name):
+def read_transaction(w3, contract, function_name, PUBLIC_KEY, PRIVATE_KEY):
     function = getattr(contract.functions, function_name)()
-    tx_receipt = send_transaction(w3, contract, function)
+    tx_receipt = send_transaction(w3, contract, function, PUBLIC_KEY, PRIVATE_KEY)
     if function_name=='getConfig':
         event_logs = contract.events.getConfigMessage().processReceipt(tx_receipt)
     elif function_name=='getClient':
@@ -126,7 +118,7 @@ def upload_model(s3, parameters_prime, model_hash):
         s3.upload_fileobj(f, BUCKET_NAME, object_key)
 
         
-def aggregate_fit(client, model_hashes, num_samples, scores, config):
+def aggregate_fit(client, model_hashes, num_samples, scores):
     params = []
     for model_hash in model_hashes:
         params.append(read_model(model_hash)) 
@@ -143,4 +135,4 @@ def aggregate_fit(client, model_hashes, num_samples, scores, config):
     weighted_updates = [np.multiply(w, update) for w, update in zip(combined_weights, params)]
     new_params = [sum(updates) for updates in zip(*weighted_updates)]
 
-    return client.fit(new_params,config)    
+    return client.fit(new_params)    
